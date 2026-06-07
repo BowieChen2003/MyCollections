@@ -1,0 +1,33 @@
+spring:
+  profiles:
+    active: dev   # 指定激活的是dev环境
+  main:
+    allow-circular-references: true
+  datasource:
+    driver-class-name: ${ccb.datasource.driver-class-name}
+    url: jdbc:mysql://${ccb.datasource.host}:${ccb.datasource.port}/${ccb.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${ccb.datasource.username}
+    password: ${ccb.datasource.password}
+
+mybatis:
+  #mapper配置文件
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.ccb.backend.entity  // 实体类包路径
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: true
+
+ccb:
+  alioss:
+    endpoint: ${ccb.alioss.endpoint}
+    access-key-id: ${ccb.alioss.access-key-id}
+    access-key-secret: ${ccb.alioss.access-key-secret}
+    bucket-name: ${ccb.alioss.bucket-name}
+  cache:
+    type: redis          # 显式指定用 redis（2.0+ 可省略）
+  redis:
+    host: localhost
+    port: 6379
+    password: 123456
+    database: 0
+
