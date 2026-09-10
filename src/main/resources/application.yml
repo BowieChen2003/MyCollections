@@ -23,11 +23,9 @@ ccb:
     access-key-id: ${ccb.alioss.access-key-id}
     access-key-secret: ${ccb.alioss.access-key-secret}
     bucket-name: ${ccb.alioss.bucket-name}
-  cache:
-    type: redis          # 显式指定用 redis（2.0+ 可省略）
   redis:
+    enabled: true
     host: localhost
     port: 6379
     password: 123456
     database: 0
-

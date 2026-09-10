@@ -15,9 +15,9 @@ import com.ccb.backend.websocket.WebSocketServer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.codehaus.jettison.json.JSONObject;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,12 +39,14 @@ public class OrderServiceImpl implements OrderService {
     private TransactionMapper transactionMapper;
     @Autowired
     private UserMapper userMapper;
-    @Autowired
+    @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
     @Autowired
     private WebSocketServer webSocketServer;
     @Autowired
     private ObjectMapper objectMapper; // 注入 Jackson 的 ObjectMapper
+    @Value("${ccb.redis.enabled:true}")
+    private boolean redisEnabled;
 
 
     private static final String ORDER_REPEAT_KEY = "order:repeat:";
@@ -54,25 +56,8 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void submitOrder(ModelOrderDTO modelOrderDTO) {
 
-        // 防止重复下单
         Long currentId = BaseContext.getCurrentId();
-        String key = ORDER_REPEAT_KEY + currentId + ":" + modelOrderDTO.getModelId();
-        Boolean success = redisTemplate.opsForValue()
-                .setIfAbsent(key, "1", 900, TimeUnit.SECONDS);
-
-        if (Boolean.FALSE.equals(success)) {
-            throw new RuntimeException("请勿重复提交订单！");
-        }
-
-        // 锁定订单
-        String key1 = "product:reserved:" + modelOrderDTO.getModelId();
-        String value = BaseContext.getCurrentId().toString();
-        Boolean success1 = redisTemplate.opsForValue()
-                .setIfAbsent(key1, value, 900, TimeUnit.SECONDS);
-
-        if(Boolean.FALSE.equals(success1)){
-            throw new RuntimeException("商品已被他人下单，请重新确认");
-        }
+        reserveOrderWithRedisIfEnabled(modelOrderDTO, currentId);
 
         // 订单信息存入订单数据库
         Order order = new Order();
@@ -131,9 +116,7 @@ public class OrderServiceImpl implements OrderService {
 
         transactionMapper.save(transaction);
 
-        // 释放商品锁定
-        String key = "product:reserved:" + order.getModelId();
-        redisTemplate.delete(key);
+        releaseReservedProductIfEnabled(order.getModelId());
     }
 
     @Override
@@ -143,7 +126,46 @@ public class OrderServiceImpl implements OrderService {
 
         orderMapper.delete(id);
 
-        String key = "product:reserved:" + order.getModelId();
-        redisTemplate.delete(key);
+        releaseReservedProductIfEnabled(order.getModelId());
+    }
+
+    private void reserveOrderWithRedisIfEnabled(ModelOrderDTO modelOrderDTO, Long currentId) {
+        if (!redisEnabled) {
+            return;
+        }
+
+        StringRedisTemplate template = requireRedisTemplate();
+
+        String repeatKey = ORDER_REPEAT_KEY + currentId + ":" + modelOrderDTO.getModelId();
+        Boolean submitSuccess = template.opsForValue()
+                .setIfAbsent(repeatKey, "1", 900, TimeUnit.SECONDS);
+
+        if (Boolean.FALSE.equals(submitSuccess)) {
+            throw new RuntimeException("请勿重复提交订单！");
+        }
+
+        String reservedKey = "product:reserved:" + modelOrderDTO.getModelId();
+        String reservedValue = currentId.toString();
+        Boolean reserveSuccess = template.opsForValue()
+                .setIfAbsent(reservedKey, reservedValue, 900, TimeUnit.SECONDS);
+
+        if (Boolean.FALSE.equals(reserveSuccess)) {
+            throw new RuntimeException("商品已被他人下单，请重新确认");
+        }
+    }
+
+    private void releaseReservedProductIfEnabled(Long modelId) {
+        if (!redisEnabled) {
+            return;
+        }
+
+        requireRedisTemplate().delete("product:reserved:" + modelId);
+    }
+
+    private StringRedisTemplate requireRedisTemplate() {
+        if (redisTemplate == null) {
+            throw new IllegalStateException("Redis 开关已开启，但 StringRedisTemplate 未注入");
+        }
+        return redisTemplate;
     }
 }

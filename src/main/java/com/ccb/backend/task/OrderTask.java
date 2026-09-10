@@ -3,7 +3,7 @@ package com.ccb.backend.task;
 import com.ccb.backend.entity.Order;
 import com.ccb.backend.mapper.OrderMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,8 +16,10 @@ public class OrderTask {
 
     @Autowired
     private OrderMapper orderMapper;
-    @Autowired
+    @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
+    @Value("${ccb.redis.enabled:true}")
+    private boolean redisEnabled;
 
     @Scheduled(cron = "0 0 1 * * ?")
     public void deleteExpiredOrders(){
@@ -26,8 +28,10 @@ public class OrderTask {
 
         if(orderList != null && orderList.size() > 0){
             orderList.forEach(order -> {
-                String key = "product:reserved:" + order.getModelId();
-                redisTemplate.delete(key);
+                if (redisEnabled && redisTemplate != null) {
+                    String key = "product:reserved:" + order.getModelId();
+                    redisTemplate.delete(key);
+                }
                 orderMapper.delete(order.getId());
             });
         }
